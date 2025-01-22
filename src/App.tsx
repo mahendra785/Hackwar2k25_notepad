@@ -1,15 +1,26 @@
-import React from "react";
-import { SafeAreaView, StyleSheet, Button, View } from "react-native";
+import React, { useState } from "react";
+import { SafeAreaView, StyleSheet, View } from "react-native";
 import DrawingCanvas from "./components/DrawingCanvas";
+import GetStarted from "./components/GetStarted";
 
 const App = () => {
+  const [showGetStarted, setShowGetStarted] = useState(true);
+
+  const handleGetStarted = () => {
+    setShowGetStarted(false);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <DrawingCanvas
-        style={styles.canvas}
-        strokeColor="#000000"
-        strokeWidth={3}
-      />
+      {showGetStarted ? (
+        <GetStarted onGetStarted={handleGetStarted} />
+      ) : (
+        <DrawingCanvas
+          style={styles.canvas}
+          strokeColor="#000000"
+          strokeWidth={3}
+        />
+      )}
     </SafeAreaView>
   );
 };

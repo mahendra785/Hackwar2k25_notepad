@@ -182,6 +182,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       onExport?.(uri);
       setShowExportModal(false);
       setExportSelection(null);
+      console.log(uri);
       Alert.alert("Success", "Drawing exported successfully!");
     } catch (error) {
       Alert.alert("Error", "Failed to export drawing");
