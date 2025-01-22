@@ -10,9 +10,6 @@ import {
 } from "react-native";
 import Svg, { Path, Rect } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
-import RNFS from "react-native-fs";
-
-import FileViewer from "react-native-file-viewer";
 
 interface DrawingCanvasProps {
   style?: ViewStyle;
@@ -85,24 +82,14 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const handleExport = async () => {
     try {
-      // Capture the canvas content
       const uri = await captureRef(canvasRef, {
         format: "png",
         quality: 1,
       });
-
-      // Define the path for the Downloads folder
-      const downloadsPath = `${RNFS.DownloadDirectoryPath}/drawing.png`;
-
-      // Save the file to the Downloads folder
-      await RNFS.copyFile(uri, downloadsPath);
-      console.log("Image saved to Downloads:", downloadsPath);
-
-      // Open the file immediately
-      await FileViewer.open(downloadsPath);
-      console.log("Image opened successfully!");
+      console.log("Exported URI:", uri);
+      // You can now share or save this PNG file.
     } catch (error) {
-      console.error("Failed to export and open image:", error);
+      console.error("Failed to export image:", error);
     }
   };
 
