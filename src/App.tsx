@@ -1,6 +1,6 @@
 import React from "react";
 import { SafeAreaView, StyleSheet, Button, View } from "react-native";
-import DrawingCanvas from "./DrawingCanvas";
+import DrawingCanvas from "./components/DrawingCanvas";
 
 const App = () => {
   return (
