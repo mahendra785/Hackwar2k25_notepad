@@ -32,6 +32,7 @@ import { storage } from "../utils/storage";
 import { FloatingButton } from "../components/floating-button";
 import { JsonNavbar } from "../components/json-navbar";
 import LatexModal from "../components/LatexModal";
+import debounce from "lodash.debounce"
 
 interface Point {
   x: number;
@@ -244,6 +245,14 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     }
   };
 
+  const debouncedSave = useCallback(
+    debounce(() => {
+      console.log("Debounced save triggered")
+      handleExport(false);
+    }, 10000),
+    [],
+  )
+
   const handleExport = async (selectedArea = false) => {
     try {
       const ref = selectedArea ? exportAreaRef : canvasRef;
@@ -357,12 +366,11 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const updatePaths = (newPaths: PathData[]) => {
     setJsons((prev) => {
-      const updated = prev.map((json) =>
-        json.id === currentJsonId ? { ...json, paths: newPaths } : json
-      );
-      return updated;
-    });
-  };
+      const updated = prev.map((json) => (json.id === currentJsonId ? { ...json, paths: newPaths } : json))
+      return updated
+    })
+    debouncedSave()
+  }
 
   // Load saved files on mount
   useEffect(() => {
@@ -381,6 +389,15 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   }, []);
 
   // Save files whenever they change
+
+  useEffect(() => {
+    console.log("Paths changed, triggering debounced save")
+    debouncedSave()
+    return () => {
+      debouncedSave.cancel()
+    }
+  }, [paths, debouncedSave])  
+
   useEffect(() => {
     if (!loading) {
       storage.saveFiles(jsons);
