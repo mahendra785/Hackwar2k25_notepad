@@ -8,7 +8,6 @@ import {
   ScrollView,
 } from "react-native";
 import Katex from "react-native-katex";
-import kaTeX from "react-native-katex";
 
 interface LatexModalProps {
   visible: boolean;
@@ -30,7 +29,28 @@ const LatexModal: React.FC<LatexModalProps> = ({
   theme,
   title,
 }) => {
-  const isLatex = content.trim().startsWith("\\") || content.includes("$$");
+  const formatContent = (text: string) => {
+    return text.split("\n").map((line, index) => {
+      if (line.trim().startsWith("$$") && line.trim().endsWith("$$")) {
+        return (
+          <Katex
+            key={index}
+            expression={line.trim().replace(/\$\$/g, "")}
+            style={{ color: theme.text, marginVertical: 10 }}
+            displayMode={true}
+          />
+        );
+      }
+      return (
+        <Text
+          key={index}
+          style={[styles.plainText, { color: theme.text, marginVertical: 5 }]}
+        >
+          {line}
+        </Text>
+      );
+    });
+  };
 
   return (
     <Modal
@@ -47,18 +67,7 @@ const LatexModal: React.FC<LatexModalProps> = ({
             {title}
           </Text>
           <ScrollView style={styles.contentContainer}>
-            {isLatex ? (
-              <Katex
-                style={{ color: theme.text }}
-                config={{ displayMode: true }}
-              >
-                {content}
-              </Katex>
-            ) : (
-              <Text style={[styles.plainText, { color: theme.text }]}>
-                {content}
-              </Text>
-            )}
+            {formatContent(content)}
           </ScrollView>
           <TouchableOpacity
             style={[styles.closeButton, { backgroundColor: theme.primary }]}
