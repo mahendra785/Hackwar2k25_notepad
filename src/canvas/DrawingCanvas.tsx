@@ -1,5 +1,5 @@
 import type React from "react"
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import {
   View,
   PanResponder,
@@ -11,6 +11,7 @@ import {
   Modal,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
   type ViewStyle,
   type GestureResponderEvent,
   Animated,
@@ -20,6 +21,7 @@ import { captureRef } from "react-native-view-shot"
 import { Feather } from "@expo/vector-icons"
 import type { DrawingCanvasProps, PathData, CanvasMode, ThemeMode, JsonData } from "../types/drawing"
 import { createTheme } from "../utils/theme"
+import { storage } from "../utils/storage"
 import { FloatingButton } from "../components/floating-button"
 import { JsonNavbar } from "../components/json-navbar"
 
@@ -40,6 +42,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const isDarkMode = forceDarkMode || (themeMode === "system" ? systemTheme === "dark" : themeMode === "dark")
   const theme = createTheme(isDarkMode)
 
+  const [loading, setLoading] = useState(true)
   const [jsons, setJsons] = useState<JsonData[]>([{ id: "1", paths: [] }])
   const [currentJsonId, setCurrentJsonId] = useState<string>("1")
   const currentJson = jsons.find((json) => json.id === currentJsonId) || jsons[0]
@@ -221,7 +224,41 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   )
 
   const updatePaths = (newPaths: PathData[]) => {
-    setJsons((prev) => prev.map((json) => (json.id === currentJsonId ? { ...json, paths: newPaths } : json)))
+    setJsons((prev) => {
+      const updated = prev.map((json) => (json.id === currentJsonId ? { ...json, paths: newPaths } : json))
+      return updated
+    })
+  }
+
+  // Load saved files on mount
+  useEffect(() => {
+    const loadSavedFiles = async () => {
+      try {
+        const savedFiles = await storage.loadFiles()
+        setJsons(savedFiles)
+        setCurrentJsonId(savedFiles[0]?.id || "1")
+      } catch (error) {
+        console.error("Error loading saved files:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadSavedFiles()
+  }, [])
+
+  // Save files whenever they change
+  useEffect(() => {
+    if (!loading) {
+      storage.saveFiles(jsons)
+    }
+  }, [jsons, loading])
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    )
   }
 
   return (
@@ -303,10 +340,9 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           <Feather name="trash-2" size={24} color="white" />
           <Text style={styles.mainButtonText}>Clear All</Text>
         </TouchableOpacity>
-        <FloatingButton onPress={() => setShowJsonNav(true)} theme={theme} />
-
       </View>
 
+      <FloatingButton onPress={() => setShowJsonNav(true)} theme={theme} />
 
       <JsonNavbar
         visible={showJsonNav}
@@ -413,6 +449,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "600",
     fontSize: 16,
+  },
+  centered: {
+    justifyContent: "center",
+    alignItems: "center",
   },
 })
 

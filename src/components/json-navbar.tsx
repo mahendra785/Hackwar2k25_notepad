@@ -1,5 +1,5 @@
 import React from "react"
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from "react-native"
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, ActivityIndicator } from "react-native"
 import { Feather } from "@expo/vector-icons"
 import type { JsonData } from "../types/drawing"
 
@@ -10,6 +10,7 @@ interface JsonNavbarProps {
   onSelectJson: (id: string) => void
   onClose: () => void
   theme: ReturnType<typeof import("../utils/theme").createTheme>
+  loading?: boolean
 }
 
 export const JsonNavbar: React.FC<JsonNavbarProps> = ({
@@ -19,6 +20,7 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
   onSelectJson,
   onClose,
   theme,
+  loading = false,
 }) => {
   const translateX = React.useRef(new Animated.Value(300)).current
 
@@ -42,7 +44,7 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
       ]}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>JSON Files</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Your Notebook</Text>
         <View style={styles.headerButtons}>
           <TouchableOpacity
             onPress={() => {
@@ -50,8 +52,9 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
               onSelectJson(newId)
             }}
             style={styles.headerButton}
+            disabled={loading}
           >
-            <Feather name="plus" size={20} color={theme.text} />
+            <Feather name="plus" size={20} color={loading ? theme.border : theme.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={onClose} style={styles.headerButton}>
             <Feather name="x" size={20} color={theme.text} />
@@ -59,40 +62,46 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
         </View>
       </View>
       <ScrollView style={styles.list}>
-        {jsons.map((json) => (
-          <TouchableOpacity
-            key={json.id}
-            style={[
-              styles.item,
-              {
-                backgroundColor: json.id === currentJsonId ? theme.primary : "transparent",
-              },
-            ]}
-            onPress={() => onSelectJson(json.id)}
-          >
-            <Feather name="file-text" size={20} color={json.id === currentJsonId ? "white" : theme.text} />
-            <Text
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator size="small" color={theme.primary} />
+          </View>
+        ) : (
+          jsons.map((json) => (
+            <TouchableOpacity
+              key={json.id}
               style={[
-                styles.itemText,
+                styles.item,
                 {
-                  color: json.id === currentJsonId ? "white" : theme.text,
+                  backgroundColor: json.id === currentJsonId ? theme.primary : "transparent",
                 },
               ]}
+              onPress={() => onSelectJson(json.id)}
             >
-              Page {json.id}
-            </Text>
-            <Text
-              style={[
-                styles.pathCount,
-                {
-                  color: json.id === currentJsonId ? "rgba(255,255,255,0.7)" : theme.text,
-                },
-              ]}
-            >
-              {json.paths.length} paths
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Feather name="file-text" size={20} color={json.id === currentJsonId ? "white" : theme.text} />
+              <Text
+                style={[
+                  styles.itemText,
+                  {
+                    color: json.id === currentJsonId ? "white" : theme.text,
+                  },
+                ]}
+              >
+                Page {json.id}
+              </Text>
+              <Text
+                style={[
+                  styles.pathCount,
+                  {
+                    color: json.id === currentJsonId ? "rgba(255,255,255,0.7)" : theme.text,
+                  },
+                ]}
+              >
+                {json.paths.length} paths
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
     </Animated.View>
   )
@@ -149,6 +158,12 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 4,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 200,
   },
 })
 
