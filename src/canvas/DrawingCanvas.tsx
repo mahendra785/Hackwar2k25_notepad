@@ -15,6 +15,7 @@ import {
   type ViewStyle,
   type GestureResponderEvent,
   Animated,
+  Linking,
 } from "react-native";
 import Svg, { Path, Rect, G } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
@@ -52,6 +53,8 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     forceDarkMode ||
     (themeMode === "system" ? systemTheme === "dark" : themeMode === "dark");
   const theme = createTheme(isDarkMode);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRecommending, setIsRecommending] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [jsons, setJsons] = useState<JsonData[]>([{ id: "1", paths: [] }]);
@@ -63,6 +66,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const [currentPath, setCurrentPath] = useState<string>("");
   const [mode, setMode] = useState<CanvasMode>("draw");
+  const [isEraserMode, setIsEraserMode] = useState(false);
   const [selectionBox, setSelectionBox] = useState({
     startX: 0,
     startY: 0,
@@ -88,6 +92,25 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       friction: 3,
     }).start();
   };
+  const isPathNearPoint = (
+    pathString: string,
+    x: number,
+    y: number,
+    radius: number = 10
+  ): boolean => {
+    const points = pathString.match(/(\d+(\.\d+)?)/g)?.map(Number);
+    if (!points) return false;
+
+    for (let i = 0; i < points.length; i += 2) {
+      const pathX = points[i];
+      const pathY = points[i + 1];
+      const distance = Math.sqrt(
+        Math.pow(pathX - x, 2) + Math.pow(pathY - y, 2)
+      );
+      if (distance < radius) return true;
+    }
+    return false;
+  };
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -98,6 +121,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
       if (mode === "draw") {
         setCurrentPath(`M ${locationX} ${locationY}`);
+      } else if (mode === "erase" || isEraserMode) {
+        // Immediately start erasing on first touch
+        updatePaths(
+          paths.filter(
+            (path) => !isPathNearPoint(path.path, locationX, locationY)
+          )
+        );
       } else if (mode === "select" || mode === "export") {
         setSelectionBox({
           startX: locationX,
@@ -114,6 +144,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
       if (mode === "draw") {
         setCurrentPath((prev) => `${prev} L ${locationX} ${locationY}`);
+      } else if (mode === "erase" || isEraserMode) {
+        // Remove paths that intersect with the current eraser position
+        updatePaths(
+          paths.filter(
+            (path) => !isPathNearPoint(path.path, locationX, locationY)
+          )
+        );
       } else if (mode === "select" || mode === "export") {
         setSelectionBox((prev) => ({
           ...prev,
@@ -132,10 +169,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           width: strokeWidth,
         };
         updatePaths([...paths, newPath]);
-        console.log(
-          "Paths JSON:",
-          JSON.stringify([...paths, newPath], null, 2)
-        );
         setCurrentPath("");
       } else if (mode === "select") {
         handleSelection();
@@ -145,6 +178,54 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       setSelectionBox((prev) => ({ ...prev, visible: false }));
     },
   });
+
+  // Modify the renderModeButton function to include eraser mode toggle
+  const renderModeButton = (
+    buttonMode: CanvasMode,
+    label: string,
+    icon: string
+  ) => (
+    <TouchableOpacity
+      style={[
+        styles.button,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        mode === buttonMode && { backgroundColor: theme.primary },
+      ]}
+      onPress={() => {
+        if (buttonMode === "erase") {
+          setIsEraserMode(!isEraserMode);
+        } else {
+          setMode(buttonMode);
+          setIsEraserMode(false);
+        }
+      }}
+      onPressIn={() => animateButton(0.95)}
+      onPressOut={() => animateButton(1)}
+    >
+      <Feather
+        name={icon}
+        size={24}
+        color={
+          mode === buttonMode || (buttonMode === "erase" && isEraserMode)
+            ? "white"
+            : theme.text
+        }
+      />
+      <Text
+        style={[
+          styles.buttonText,
+          {
+            color:
+              mode === buttonMode || (buttonMode === "erase" && isEraserMode)
+                ? "white"
+                : theme.text,
+          },
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
 
   const handleSelection = useCallback(() => {
     const selected = new Set<string>();
@@ -177,9 +258,9 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const handleExport = async (selectedArea = false) => {
     try {
+      setIsExporting(true);
       const ref = selectedArea ? exportAreaRef : canvasRef;
 
-      // Capture the canvas as an image and return a local URI
       const uri = await captureRef(ref, {
         format: "png",
         quality: 1,
@@ -188,17 +269,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       if (!uri) {
         throw new Error("Failed to capture the canvas. URI is invalid.");
       }
-      console.log("Captured URI:", uri);
 
-      // Build multipart/form-data with the local file URI directly
       const formData = new FormData();
       formData.append("file", {
-        uri, // The local URI from captureRef
+        uri,
         type: "image/png",
         name: "drawing.png",
       } as any);
-
-      // Send the FormData to the backend
 
       const backendResponse = await fetch(
         "https://hackwar-be.onrender.com/process-math",
@@ -213,18 +290,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       }
 
       const data = await backendResponse.json();
-      console.log("Upload successful:", data);
 
-      // Handle the DeepSeek response
       if (data.choices && data.choices[0]?.message?.content) {
         const teacherGuidance = data.choices[0].message.content;
-
-        // Format the response for display
         const formattedContent = `
-    Teacher's Guidance:
-    ${teacherGuidance}
-  `;
-
+          Teacher's Guidance:
+          ${teacherGuidance}
+        `;
         setLatexResult(formattedContent.trim());
         setShowLatexModal(true);
       } else {
@@ -240,8 +312,146 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         error.message || "An unknown error occurred during analysis."
       );
       console.error("Analysis error:", error);
+    } finally {
+      setIsExporting(false);
     }
   };
+
+  // Update the recommendations button with loading state
+  <TouchableOpacity
+    style={[
+      styles.button,
+      { backgroundColor: theme.surface, borderColor: theme.border },
+    ]}
+    onPress={async () => {
+      try {
+        setIsRecommending(true);
+        const uri = await captureRef(canvasRef, {
+          format: "png",
+          quality: 1,
+        });
+
+        if (!uri) {
+          throw new Error("Failed to capture the canvas");
+        }
+
+        const formData = new FormData();
+        formData.append("file", {
+          uri,
+          type: "image/png",
+          name: "drawing.png",
+        } as any);
+
+        const response = await fetch(
+          "https://hackwar-be.onrender.com/recommendation-image",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const resultContent = (
+          <View>
+            <Text style={{ color: theme.text, marginBottom: 10 }}>
+              Processed Text: {data.processed_text}
+            </Text>
+            <Text style={{ color: theme.text, marginBottom: 10 }}>
+              Topic: {data.extracted_topic}
+            </Text>
+            <Text style={{ color: theme.text, marginBottom: 10 }}>
+              Recommendations:
+            </Text>
+            {data.recommendations.map((rec: any, index: number) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => Linking.openURL(rec.link)}
+                style={{ marginVertical: 5 }}
+              >
+                <Text
+                  style={{
+                    color: theme.primary,
+                    textDecorationLine: "underline",
+                    marginLeft: 10,
+                  }}
+                >
+                  {index + 1}. {rec.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        );
+
+        setLatexResult(resultContent);
+        setShowLatexModal(true);
+      } catch (error: any) {
+        Alert.alert(
+          "Error",
+          error.message || "An error occurred while getting recommendations"
+        );
+        console.error("Recommendation error:", error);
+      } finally {
+        setIsRecommending(false);
+      }
+    }}
+  >
+    {isRecommending ? (
+      <ActivityIndicator color={theme.text} />
+    ) : (
+      <>
+        <Feather name="book" size={24} color={theme.text} />
+        <Text style={[styles.buttonText, { color: theme.text }]}>
+          Recommend
+        </Text>
+      </>
+    )}
+  </TouchableOpacity>;
+
+  // Update the export modal content
+  {
+    showExportModal && (
+      <Modal
+        transparent
+        visible={showExportModal}
+        onRequestClose={() => setShowExportModal(false)}
+      >
+        <View
+          style={[styles.modalOverlay, { backgroundColor: "rgba(0,0,0,0.5)" }]}
+        >
+          <View
+            style={[styles.modalContent, { backgroundColor: theme.surface }]}
+          >
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              Export Options
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: theme.primary }]}
+              onPress={() => handleExport(false)}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.modalButtonText}>Export Entire Canvas</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: theme.danger }]}
+              onPress={() => setShowExportModal(false)}
+            >
+              <Text style={styles.modalButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+         
+      </Modal>
+    );
+  }
 
   const cycleTheme = () => {
     setThemeMode((current) => {
@@ -256,37 +466,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     });
   };
 
-  const renderModeButton = (
-    buttonMode: CanvasMode,
-    label: string,
-    icon: string
-  ) => (
-    <TouchableOpacity
-      style={[
-        styles.button,
-        { backgroundColor: theme.surface, borderColor: theme.border },
-        mode === buttonMode && { backgroundColor: theme.primary },
-      ]}
-      onPress={() => setMode(buttonMode)}
-      onPressIn={() => animateButton(0.95)}
-      onPressOut={() => animateButton(1)}
-    >
-      <Feather
-        name={icon}
-        size={24}
-        color={mode === buttonMode ? "white" : theme.text}
-      />
-      <Text
-        style={[
-          styles.buttonText,
-          { color: mode === buttonMode ? "white" : theme.text },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-
   const renderExportModal = () => (
     <Modal
       transparent
@@ -300,12 +479,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           <Text style={[styles.modalTitle, { color: theme.text }]}>
             Export Options
           </Text>
-          <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: theme.primary }]}
-            onPress={() => handleExport(true)}
-          >
-            <Text style={styles.modalButtonText}>Export Selected Area</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modalButton, { backgroundColor: theme.primary }]}
             onPress={() => handleExport(false)}
@@ -389,22 +562,99 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         ]}
       >
         {renderModeButton("draw", "Draw", "edit-2")}
-        {renderModeButton("select", "Select", "square")}
         {renderModeButton("export", "Export", "share")}
+
         <TouchableOpacity
           style={[
             styles.button,
             { backgroundColor: theme.surface, borderColor: theme.border },
           ]}
-          onPress={cycleTheme}
+          onPress={async () => {
+            try {
+              const uri = await captureRef(canvasRef, {
+                format: "png",
+                quality: 1,
+              });
+
+              if (!uri) {
+                throw new Error("Failed to capture the canvas");
+              }
+
+              const formData = new FormData();
+              formData.append("file", {
+                uri,
+                type: "image/png",
+                name: "drawing.png",
+              } as any);
+
+              const response = await fetch(
+                "https://hackwar-be.onrender.com/recommendation-image",
+                {
+                  method: "POST",
+                  body: formData,
+                }
+              );
+
+              if (!response.ok) {
+                throw new Error(
+                  `Request failed with status ${response.status}`
+                );
+              }
+
+              const data = await response.json();
+              console.log("Recommendations received:", data);
+
+              // Format the recommendations for display with clickable links
+              const resultContent = (
+                <View>
+                  <Text style={{ color: theme.text, marginBottom: 10 }}>
+                    Processed Text: {data.processed_text}
+                  </Text>
+
+                  <Text style={{ color: theme.text, marginBottom: 10 }}>
+                    Topic: {data.extracted_topic}
+                  </Text>
+
+                  <Text style={{ color: theme.text, marginBottom: 10 }}>
+                    Recommendations:
+                  </Text>
+
+                  {data.recommendations.map((rec: any, index: number) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => Linking.openURL(rec.link)}
+                      style={{ marginVertical: 5 }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.primary,
+                          textDecorationLine: "underline",
+                          marginLeft: 10,
+                        }}
+                      >
+                        {index + 1}. {rec.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+
+              // Update your LatexModal component to handle React elements
+              setLatexResult(resultContent);
+              setShowLatexModal(true);
+            } catch (error: any) {
+              Alert.alert(
+                "Error",
+                error.message ||
+                  "An error occurred while getting recommendations"
+              );
+              console.error("Recommendation error:", error);
+            }
+          }}
         >
-          <Feather
-            name={isDarkMode ? "moon" : "sun"}
-            size={24}
-            color={theme.text}
-          />
+          <Feather name="book" size={24} color={theme.text} />
           <Text style={[styles.buttonText, { color: theme.text }]}>
-            {themeMode.charAt(0).toUpperCase() + themeMode.slice(1)}
+            Recommend
           </Text>
         </TouchableOpacity>
       </View>
@@ -421,19 +671,29 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 key={pathData.id}
                 d={pathData.path}
                 stroke={
-                  selectedPaths.has(pathData.id)
+                  mode === "erase"
+                    ? "rgba(255,0,0,0.3)"
+                    : selectedPaths.has(pathData.id)
                     ? theme.success
                     : pathData.color
                 }
-                strokeWidth={pathData.width}
+                strokeWidth={
+                  mode === "erase" ? pathData.width + 10 : pathData.width
+                }
                 fill="none"
               />
             ))}
             {currentPath && (
               <Path
                 d={currentPath}
-                stroke={isDarkMode ? "#FFFFFF" : strokeColor}
-                strokeWidth={strokeWidth}
+                stroke={
+                  mode === "erase"
+                    ? "rgba(255,0,0,0.3)"
+                    : isDarkMode
+                    ? "#FFFFFF"
+                    : strokeColor
+                }
+                strokeWidth={mode === "erase" ? strokeWidth + 10 : strokeWidth}
                 fill="none"
               />
             )}
@@ -559,6 +819,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3,
   },
+  eraserIndicator: {
+    position: "absolute",
+    top: 60, // Adjust based on your toolbar height
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+    backgroundColor: "rgba(255,0,0,0.1)",
+    padding: 5,
+  },
   mainButtonText: {
     color: "white",
     fontWeight: "bold",
@@ -576,7 +846,7 @@ const styles = StyleSheet.create({
   modalContent: {
     padding: 20,
     borderRadius: 16,
-    width: "80%",
+    width: "40%",
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
