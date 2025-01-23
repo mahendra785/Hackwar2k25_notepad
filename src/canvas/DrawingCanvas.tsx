@@ -62,6 +62,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const [currentPath, setCurrentPath] = useState<string>("");
   const [mode, setMode] = useState<CanvasMode>("draw");
+  const [isEraserMode, setIsEraserMode] = useState(false);
   const [selectionBox, setSelectionBox] = useState({
     startX: 0,
     startY: 0,
@@ -87,6 +88,25 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       friction: 3,
     }).start();
   };
+  const isPathNearPoint = (
+    pathString: string,
+    x: number,
+    y: number,
+    radius: number = 10
+  ): boolean => {
+    const points = pathString.match(/(\d+(\.\d+)?)/g)?.map(Number);
+    if (!points) return false;
+
+    for (let i = 0; i < points.length; i += 2) {
+      const pathX = points[i];
+      const pathY = points[i + 1];
+      const distance = Math.sqrt(
+        Math.pow(pathX - x, 2) + Math.pow(pathY - y, 2)
+      );
+      if (distance < radius) return true;
+    }
+    return false;
+  };
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -97,6 +117,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
       if (mode === "draw") {
         setCurrentPath(`M ${locationX} ${locationY}`);
+      } else if (mode === "erase" || isEraserMode) {
+        // Immediately start erasing on first touch
+        updatePaths(
+          paths.filter(
+            (path) => !isPathNearPoint(path.path, locationX, locationY)
+          )
+        );
       } else if (mode === "select" || mode === "export") {
         setSelectionBox({
           startX: locationX,
@@ -113,6 +140,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
       if (mode === "draw") {
         setCurrentPath((prev) => `${prev} L ${locationX} ${locationY}`);
+      } else if (mode === "erase" || isEraserMode) {
+        // Remove paths that intersect with the current eraser position
+        updatePaths(
+          paths.filter(
+            (path) => !isPathNearPoint(path.path, locationX, locationY)
+          )
+        );
       } else if (mode === "select" || mode === "export") {
         setSelectionBox((prev) => ({
           ...prev,
@@ -131,10 +165,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           width: strokeWidth,
         };
         updatePaths([...paths, newPath]);
-        console.log(
-          "Paths JSON:",
-          JSON.stringify([...paths, newPath], null, 2)
-        );
         setCurrentPath("");
       } else if (mode === "select") {
         handleSelection();
@@ -144,6 +174,54 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       setSelectionBox((prev) => ({ ...prev, visible: false }));
     },
   });
+
+  // Modify the renderModeButton function to include eraser mode toggle
+  const renderModeButton = (
+    buttonMode: CanvasMode,
+    label: string,
+    icon: string
+  ) => (
+    <TouchableOpacity
+      style={[
+        styles.button,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        mode === buttonMode && { backgroundColor: theme.primary },
+      ]}
+      onPress={() => {
+        if (buttonMode === "erase") {
+          setIsEraserMode(!isEraserMode);
+        } else {
+          setMode(buttonMode);
+          setIsEraserMode(false);
+        }
+      }}
+      onPressIn={() => animateButton(0.95)}
+      onPressOut={() => animateButton(1)}
+    >
+      <Feather
+        name={icon}
+        size={24}
+        color={
+          mode === buttonMode || (buttonMode === "erase" && isEraserMode)
+            ? "white"
+            : theme.text
+        }
+      />
+      <Text
+        style={[
+          styles.buttonText,
+          {
+            color:
+              mode === buttonMode || (buttonMode === "erase" && isEraserMode)
+                ? "white"
+                : theme.text,
+          },
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
 
   const handleSelection = useCallback(() => {
     const selected = new Set<string>();
@@ -247,37 +325,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     });
   };
 
-  const renderModeButton = (
-    buttonMode: CanvasMode,
-    label: string,
-    icon: string
-  ) => (
-    <TouchableOpacity
-      style={[
-        styles.button,
-        { backgroundColor: theme.surface, borderColor: theme.border },
-        mode === buttonMode && { backgroundColor: theme.primary },
-      ]}
-      onPress={() => setMode(buttonMode)}
-      onPressIn={() => animateButton(0.95)}
-      onPressOut={() => animateButton(1)}
-    >
-      <Feather
-        name={icon}
-        size={24}
-        color={mode === buttonMode ? "white" : theme.text}
-      />
-      <Text
-        style={[
-          styles.buttonText,
-          { color: mode === buttonMode ? "white" : theme.text },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-
   const renderExportModal = () => (
     <Modal
       transparent
@@ -372,8 +419,14 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         ]}
       >
         {renderModeButton("draw", "Draw", "edit-2")}
+        {renderModeButton("erase", "Erase", "delete")}
         {renderModeButton("select", "Select", "square")}
         {renderModeButton("export", "Export", "share")}
+        {isEraserMode && (
+          <View style={styles.eraserIndicator}>
+            <Text style={{ color: theme.text }}>Eraser Mode Active</Text>
+          </View>
+        )}
         <TouchableOpacity
           style={[
             styles.button,
@@ -404,19 +457,29 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 key={pathData.id}
                 d={pathData.path}
                 stroke={
-                  selectedPaths.has(pathData.id)
+                  mode === "erase"
+                    ? "rgba(255,0,0,0.3)"
+                    : selectedPaths.has(pathData.id)
                     ? theme.success
                     : pathData.color
                 }
-                strokeWidth={pathData.width}
+                strokeWidth={
+                  mode === "erase" ? pathData.width + 10 : pathData.width
+                }
                 fill="none"
               />
             ))}
             {currentPath && (
               <Path
                 d={currentPath}
-                stroke={isDarkMode ? "#FFFFFF" : strokeColor}
-                strokeWidth={strokeWidth}
+                stroke={
+                  mode === "erase"
+                    ? "rgba(255,0,0,0.3)"
+                    : isDarkMode
+                    ? "#FFFFFF"
+                    : strokeColor
+                }
+                strokeWidth={mode === "erase" ? strokeWidth + 10 : strokeWidth}
                 fill="none"
               />
             )}
@@ -541,6 +604,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3,
+  },
+  eraserIndicator: {
+    position: "absolute",
+    top: 60, // Adjust based on your toolbar height
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+    backgroundColor: "rgba(255,0,0,0.1)",
+    padding: 5,
   },
   mainButtonText: {
     color: "white",
