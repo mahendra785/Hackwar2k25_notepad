@@ -134,32 +134,6 @@ const LatexModal: React.FC<LatexModalProps> = ({
         );
       }
 
-      // Handle inline code `code`
-      if (/`.*?`/.test(line)) {
-        return (
-          <Text key={index} style={[styles.plainText, { color: theme.text }]}>
-            {line.split(/(`.*?`)/).map((part, partIndex) =>
-              /`.*?`/.test(part) ? (
-                <Text
-                  key={partIndex}
-                  style={{
-                    fontFamily: "monospace",
-                    backgroundColor: theme.surface,
-                    borderRadius: 4,
-                    paddingHorizontal: 4,
-                    color: theme.primary,
-                  }}
-                >
-                  {part.replace(/`/g, "")}
-                </Text>
-              ) : (
-                part
-              )
-            )}
-          </Text>
-        );
-      }
-
       // Handle code blocks ```code```
       if (line.startsWith("```") && line.endsWith("```")) {
         return (

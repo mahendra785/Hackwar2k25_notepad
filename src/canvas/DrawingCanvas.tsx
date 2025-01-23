@@ -340,12 +340,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           </Text>
           <TouchableOpacity
             style={[styles.modalButton, { backgroundColor: theme.primary }]}
-            onPress={() => handleExport(true)}
-          >
-            <Text style={styles.modalButtonText}>Export Selected Area</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: theme.primary }]}
             onPress={() => handleExport(false)}
           >
             <Text style={styles.modalButtonText}>Export Entire Canvas</Text>
@@ -419,28 +413,100 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         ]}
       >
         {renderModeButton("draw", "Draw", "edit-2")}
-        {renderModeButton("erase", "Erase", "delete")}
         {renderModeButton("select", "Select", "square")}
         {renderModeButton("export", "Export", "share")}
-        {isEraserMode && (
-          <View style={styles.eraserIndicator}>
-            <Text style={{ color: theme.text }}>Eraser Mode Active</Text>
-          </View>
-        )}
+
         <TouchableOpacity
           style={[
             styles.button,
             { backgroundColor: theme.surface, borderColor: theme.border },
           ]}
-          onPress={cycleTheme}
+          onPress={async () => {
+            try {
+              const uri = await captureRef(canvasRef, {
+                format: "png",
+                quality: 1,
+              });
+
+              if (!uri) {
+                throw new Error("Failed to capture the canvas");
+              }
+
+              const formData = new FormData();
+              formData.append("file", {
+                uri,
+                type: "image/png",
+                name: "drawing.png",
+              } as any);
+
+              const response = await fetch(
+                "https://hackwar-be.onrender.com/recommendation-image",
+                {
+                  method: "POST",
+                  body: formData,
+                }
+              );
+
+              if (!response.ok) {
+                throw new Error(
+                  `Request failed with status ${response.status}`
+                );
+              }
+
+              const data = await response.json();
+              console.log("Recommendations received:", data);
+
+              // Format the recommendations for display with clickable links
+              const resultContent = (
+                <View>
+                  <Text style={{ color: theme.text, marginBottom: 10 }}>
+                    Processed Text: {data.processed_text}
+                  </Text>
+
+                  <Text style={{ color: theme.text, marginBottom: 10 }}>
+                    Topic: {data.extracted_topic}
+                  </Text>
+
+                  <Text style={{ color: theme.text, marginBottom: 10 }}>
+                    Recommendations:
+                  </Text>
+
+                  {data.recommendations.map((rec: any, index: number) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => Linking.openURL(rec.link)}
+                      style={{ marginVertical: 5 }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.primary,
+                          textDecorationLine: "underline",
+                          marginLeft: 10,
+                        }}
+                      >
+                        {index + 1}. {rec.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+
+              // Update your LatexModal component to handle React elements
+              setLatexResult(resultContent);
+              setShowLatexModal(true);
+            } catch (error: any) {
+              Alert.alert(
+                "Error",
+                error.message ||
+                  "An error occurred while getting recommendations"
+              );
+              console.error("Recommendation error:", error);
+            }
+          }}
         >
-          <Feather
-            name={isDarkMode ? "moon" : "sun"}
-            size={24}
-            color={theme.text}
-          />
+          <Feather name="book" size={24} color={theme.text} />
           <Text style={[styles.buttonText, { color: theme.text }]}>
-            {themeMode.charAt(0).toUpperCase() + themeMode.slice(1)}
+            Recommend
           </Text>
         </TouchableOpacity>
       </View>
@@ -632,7 +698,7 @@ const styles = StyleSheet.create({
   modalContent: {
     padding: 20,
     borderRadius: 16,
-    width: "80%",
+    width: "40%",
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
