@@ -34,7 +34,6 @@ const App = () => {
     <SafeAreaView style={styles.container}>
       <DrawingCanvas 
         style={styles.canvas} 
-        drawingId={selectedDrawing}
         strokeColor="#000000" 
         strokeWidth={3} 
       />
