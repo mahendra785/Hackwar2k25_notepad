@@ -1,50 +1,34 @@
-import type React from "react";
-import { useState, useRef, useCallback } from "react";
+import type React from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import {
   View,
   PanResponder,
   StyleSheet,
-  type ViewStyle,
-  type GestureResponderEvent,
   TouchableOpacity,
   Text,
   Alert,
-  Animated,
   useColorScheme,
   Modal,
   SafeAreaView,
   StatusBar,
-} from "react-native";
-import Svg, { Path, Rect, G } from "react-native-svg";
-import { captureRef } from "react-native-view-shot";
-import { Feather } from "@expo/vector-icons";
-// If you want to load from .env, import below or just replace with your own URL:
-// import { BACKEND_URL } from "@env";
-import LatexModal from "./LatexModal";
+  ActivityIndicator,
+  type ViewStyle,
+  type GestureResponderEvent,
+  Animated,
+} from "react-native"
+import Svg, { Path, Rect, G } from "react-native-svg"
+import { captureRef } from "react-native-view-shot"
+import { Feather } from "@expo/vector-icons"
+import type { DrawingCanvasProps, PathData, CanvasMode, ThemeMode, JsonData, ExportSelection } from "../types/drawing"
+import { createTheme } from "../utils/theme"
+import { storage } from "../utils/storage"
+import { FloatingButton } from "../components/floating-button"
+import { JsonNavbar } from "../components/json-navbar"
+import LatexModal from "../components/LatexModal";
 
-type CanvasMode = "draw" | "select" | "export";
-type ThemeMode = "light" | "dark" | "system";
-
-interface DrawingCanvasProps {
-  style?: ViewStyle;
-  strokeColor?: string;
-  strokeWidth?: number;
-  onExport?: (uri: string) => void;
-  forceDarkMode?: boolean;
-}
-
-interface PathData {
-  id: string;
-  path: string;
-  color: string;
-  width: number;
-}
-
-interface ExportSelection {
-  startX: number;
-  startY: number;
-  width: number;
-  height: number;
+interface Point {
+  x: number
+  y: number
 }
 
 const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
@@ -54,15 +38,20 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   onExport,
   forceDarkMode,
 }) => {
-  const systemTheme = useColorScheme();
-  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
-  const isDarkMode =
-    forceDarkMode ||
-    (themeMode === "system" ? systemTheme === "dark" : themeMode === "dark");
+  const systemTheme = useColorScheme()
+  const [themeMode, setThemeMode] = useState<ThemeMode>("system")
+  const isDarkMode = forceDarkMode || (themeMode === "system" ? systemTheme === "dark" : themeMode === "dark")
+  const theme = createTheme(isDarkMode)
 
-  const [paths, setPaths] = useState<PathData[]>([]);
-  const [currentPath, setCurrentPath] = useState<string>("");
-  const [mode, setMode] = useState<CanvasMode>("draw");
+  const [loading, setLoading] = useState(true)
+  const [jsons, setJsons] = useState<JsonData[]>([{ id: "1", paths: [] }])
+  const [currentJsonId, setCurrentJsonId] = useState<string>("1")
+  const currentJson = jsons.find((json) => json.id === currentJsonId) || jsons[0]
+  const paths = currentJson.paths
+  const [showJsonNav, setShowJsonNav] = useState(false)
+
+  const [currentPath, setCurrentPath] = useState<string>("")
+  const [mode, setMode] = useState<CanvasMode>("draw")
   const [selectionBox, setSelectionBox] = useState({
     startX: 0,
     startY: 0,
@@ -70,44 +59,33 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     height: 0,
     visible: false,
   });
-  const [exportSelection, setExportSelection] =
-    useState<ExportSelection | null>(null);
+  const [exportSelection, setExportSelection] = useState<ExportSelection | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [latexResult, setLatexResult] = useState<string>("");
   const [showLatexModal, setShowLatexModal] = useState(false);
 
-  const canvasRef = useRef<View>(null);
-  const exportAreaRef = useRef<View>(null);
-  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
-
-  const theme = {
-    background: isDarkMode ? "#121212" : "#F0F0F0",
-    surface: isDarkMode ? "#1E1E1E" : "#FFFFFF",
-    text: isDarkMode ? "#E1E1E1" : "#333333",
-    border: isDarkMode ? "#333333" : "#E0E0E0",
-    primary: "#4D97FF",
-    success: "#4CAF50",
-    danger: "#FF6B6B",
-    selection: "rgba(77, 151, 255, 0.1)",
-  };
+  const canvasRef = useRef<View>(null)
+  const exportAreaRef = useRef<View>(null)
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current
 
   const animateButton = (scale: number) => {
     Animated.spring(buttonScaleAnim, {
       toValue: scale,
       useNativeDriver: true,
       friction: 3,
-    }).start();
-  };
+    }).start()
+  }
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
 
     onPanResponderGrant: (event: GestureResponderEvent) => {
-      const { locationX, locationY } = event.nativeEvent;
+      const { locationX, locationY } = event.nativeEvent
+
       if (mode === "draw") {
-        setCurrentPath(`M ${locationX} ${locationY}`);
+        setCurrentPath(`M ${locationX} ${locationY}`)
       } else if (mode === "select" || mode === "export") {
         setSelectionBox({
           startX: locationX,
@@ -115,52 +93,52 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           width: 0,
           height: 0,
           visible: true,
-        });
+        })
       }
     },
 
     onPanResponderMove: (event: GestureResponderEvent) => {
-      const { locationX, locationY } = event.nativeEvent;
+      const { locationX, locationY } = event.nativeEvent
+
       if (mode === "draw") {
-        setCurrentPath((prev) => `${prev} L ${locationX} ${locationY}`);
+        setCurrentPath((prev) => `${prev} L ${locationX} ${locationY}`)
       } else if (mode === "select" || mode === "export") {
         setSelectionBox((prev) => ({
           ...prev,
           width: locationX - prev.startX,
           height: locationY - prev.startY,
-        }));
+        }))
       }
     },
 
     onPanResponderRelease: () => {
       if (mode === "draw" && currentPath) {
-        setPaths((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            path: currentPath,
-            color: isDarkMode ? "#FFFFFF" : strokeColor,
-            width: strokeWidth,
-          },
-        ]);
-        setCurrentPath("");
+        const newPath = {
+          id: Date.now().toString(),
+          path: currentPath,
+          color: isDarkMode ? "#FFFFFF" : strokeColor,
+          width: strokeWidth,
+        }
+        updatePaths([...paths, newPath])
+        console.log("Paths JSON:", JSON.stringify([...paths, newPath], null, 2))
+        setCurrentPath("")
       } else if (mode === "select") {
-        handleSelection();
+        handleSelection()
       } else if (mode === "export") {
-        handleExportSelection();
+        handleExportSelection()
       }
-      setSelectionBox((prev) => ({ ...prev, visible: false }));
+      setSelectionBox((prev) => ({ ...prev, visible: false }))
     },
-  });
+  })
 
   const handleSelection = useCallback(() => {
-    // Currently this just selects all paths; enhance to check bounding boxes, etc.
-    const selected = new Set<string>();
+    const selected = new Set<string>()
     paths.forEach((path) => {
-      selected.add(path.id);
-    });
-    setSelectedPaths(selected);
-  }, [paths]);
+      // Simple selection logic - enhance as needed
+      selected.add(path.id)
+    })
+    setSelectedPaths(selected)
+  }, [paths, selectionBox])
 
   const handleExportSelection = () => {
     if (selectionBox.width && selectionBox.height) {
@@ -169,10 +147,10 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         startY: selectionBox.startY,
         width: selectionBox.width,
         height: selectionBox.height,
-      });
-      setShowExportModal(true);
+      })
+      setShowExportModal(true)
     }
-  };
+  }
 
   const handleExport = async (selectedArea = false) => {
     try {
@@ -243,26 +221,22 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       );
       console.error("Export error:", error);
     }
-  };
+  }
 
   const cycleTheme = () => {
     setThemeMode((current) => {
       switch (current) {
         case "light":
-          return "dark";
+          return "dark"
         case "dark":
-          return "system";
+          return "system"
         case "system":
-          return "light";
+          return "light"
       }
-    });
-  };
+    })
+  }
 
-  const renderModeButton = (
-    buttonMode: CanvasMode,
-    label: string,
-    icon: string
-  ) => (
+  const renderModeButton = (buttonMode: CanvasMode, label: string, icon: string) => (
     <TouchableOpacity
       style={[
         styles.button,
@@ -273,35 +247,16 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       onPressIn={() => animateButton(0.95)}
       onPressOut={() => animateButton(1)}
     >
-      <Feather
-        name={icon}
-        size={24}
-        color={mode === buttonMode ? "white" : theme.text}
-      />
-      <Text
-        style={[
-          styles.buttonText,
-          { color: mode === buttonMode ? "white" : theme.text },
-        ]}
-      >
-        {label}
-      </Text>
+      <Feather name={icon} size={24} color={mode === buttonMode ? "white" : theme.text} />
+      <Text style={[styles.buttonText, { color: mode === buttonMode ? "white" : theme.text }]}>{label}</Text>
     </TouchableOpacity>
-  );
+  )
 
   const renderExportModal = () => (
-    <Modal
-      transparent
-      visible={showExportModal}
-      onRequestClose={() => setShowExportModal(false)}
-    >
-      <View
-        style={[styles.modalOverlay, { backgroundColor: "rgba(0,0,0,0.5)" }]}
-      >
+    <Modal transparent visible={showExportModal} onRequestClose={() => setShowExportModal(false)}>
+      <View style={[styles.modalOverlay, { backgroundColor: "rgba(0,0,0,0.5)" }]}>
         <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.modalTitle, { color: theme.text }]}>
-            Export Options
-          </Text>
+          <Text style={[styles.modalTitle, { color: theme.text }]}>Export Options</Text>
           <TouchableOpacity
             style={[styles.modalButton, { backgroundColor: theme.primary }]}
             onPress={() => handleExport(true)}
@@ -323,34 +278,58 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         </View>
       </View>
     </Modal>
-  );
+  )
+
+  const updatePaths = (newPaths: PathData[]) => {
+    setJsons((prev) => {
+      const updated = prev.map((json) => (json.id === currentJsonId ? { ...json, paths: newPaths } : json))
+      return updated
+    })
+  }
+
+  // Load saved files on mount
+  useEffect(() => {
+    const loadSavedFiles = async () => {
+      try {
+        const savedFiles = await storage.loadFiles()
+        setJsons(savedFiles)
+        setCurrentJsonId(savedFiles[0]?.id || "1")
+      } catch (error) {
+        console.error("Error loading saved files:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadSavedFiles()
+  }, [])
+
+  // Save files whenever they change
+  useEffect(() => {
+    if (!loading) {
+      storage.saveFiles(jsons)
+    }
+  }, [jsons, loading])
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    )
+  }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.background }, style]}
-    >
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }, style]}>
       <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
-      <View
-        style={[
-          styles.toolbar,
-          { backgroundColor: theme.surface, borderBottomColor: theme.border },
-        ]}
-      >
+      <View style={[styles.toolbar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         {renderModeButton("draw", "Draw", "edit-2")}
         {renderModeButton("select", "Select", "square")}
         {renderModeButton("export", "Export", "share")}
         <TouchableOpacity
-          style={[
-            styles.button,
-            { backgroundColor: theme.surface, borderColor: theme.border },
-          ]}
+          style={[styles.button, { backgroundColor: theme.surface, borderColor: theme.border }]}
           onPress={cycleTheme}
         >
-          <Feather
-            name={isDarkMode ? "moon" : "sun"}
-            size={24}
-            color={theme.text}
-          />
+          <Feather name={isDarkMode ? "moon" : "sun"} size={24} color={theme.text} />
           <Text style={[styles.buttonText, { color: theme.text }]}>
             {themeMode.charAt(0).toUpperCase() + themeMode.slice(1)}
           </Text>
@@ -368,11 +347,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               <Path
                 key={pathData.id}
                 d={pathData.path}
-                stroke={
-                  selectedPaths.has(pathData.id)
-                    ? theme.success
-                    : pathData.color
-                }
+                stroke={selectedPaths.has(pathData.id) ? theme.success : pathData.color}
                 strokeWidth={pathData.width}
                 fill="none"
               />
@@ -401,31 +376,22 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         </Svg>
       </View>
 
-      <View
-        style={[
-          styles.bottomToolbar,
-          { backgroundColor: theme.surface, borderTopColor: theme.border },
-        ]}
-      >
+      <View style={[styles.bottomToolbar, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
         <TouchableOpacity
           style={[styles.mainButton, { backgroundColor: theme.danger }]}
           onPress={() => {
-            Alert.alert(
-              "Clear Canvas",
-              "Are you sure you want to clear the canvas?",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Clear",
-                  style: "destructive",
-                  onPress: () => {
-                    setPaths([]);
-                    setCurrentPath("");
-                    setSelectedPaths(new Set());
-                  },
+            Alert.alert("Clear Canvas", "Are you sure you want to clear the canvas?", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Clear",
+                style: "destructive",
+                onPress: () => {
+                  updatePaths([])
+                  setCurrentPath("")
+                  setSelectedPaths(new Set())
                 },
-              ]
-            );
+              },
+            ])
           }}
         >
           <Feather name="trash-2" size={24} color="white" />
@@ -433,6 +399,22 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         </TouchableOpacity>
       </View>
 
+      <FloatingButton onPress={() => setShowJsonNav(true)} theme={theme} />
+
+      <JsonNavbar
+        visible={showJsonNav}
+        jsons={jsons}
+        currentJsonId={currentJsonId}
+        onSelectJson={(id) => {
+          if (id === (jsons.length + 1).toString()) {
+            setJsons((prev) => [...prev, { id, paths: [] }])
+          }
+          setCurrentJsonId(id)
+          setShowJsonNav(false)
+        }}
+        onClose={() => setShowJsonNav(false)}
+        theme={theme}
+      />
       {renderExportModal()}
       <LatexModal
         visible={showLatexModal}
@@ -442,8 +424,8 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         title="Analysis Result"
       />
     </SafeAreaView>
-  );
-};
+  )
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -532,6 +514,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 16,
   },
-});
+  centered: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+})
 
-export default DrawingCanvas;
+export default DrawingCanvas
+
