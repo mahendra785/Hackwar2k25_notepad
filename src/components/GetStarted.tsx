@@ -57,7 +57,7 @@ const GetStarted: React.FC<GetStartedProps> = ({ onGetStarted }) => {
           />
         </View>
 
-        <Text style={styles.title}>Welcome to Sketch Pad</Text>
+        <Text style={styles.title}>Welcome to NoTutor</Text>
 
         <Text style={styles.subtitle}>
           Express your creativity with our simple and intuitive drawing canvas

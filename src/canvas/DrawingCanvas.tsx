@@ -1,49 +1,42 @@
 import type React from "react";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   PanResponder,
   StyleSheet,
-  type ViewStyle,
-  type GestureResponderEvent,
   TouchableOpacity,
   Text,
   Alert,
-  Animated,
   useColorScheme,
   Modal,
-  Pressable,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
+  type ViewStyle,
+  type GestureResponderEvent,
+  Animated,
 } from "react-native";
 import Svg, { Path, Rect, G } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
 import { Feather } from "@expo/vector-icons";
+import type {
+  DrawingCanvasProps,
+  PathData,
+  CanvasMode,
+  ThemeMode,
+  JsonData,
+  ExportSelection,
+} from "../types/drawing";
+import { createTheme } from "../utils/theme";
+import { storage } from "../utils/storage";
+import { FloatingButton } from "../components/floating-button";
+import { JsonNavbar } from "../components/json-navbar";
+import LatexModal from "../components/LatexModal";
 
-interface DrawingCanvasProps {
-  style?: ViewStyle;
-  strokeColor?: string;
-  strokeWidth?: number;
-  onExport?: (uri: string) => void;
-  forceDarkMode?: boolean;
+interface Point {
+  x: number;
+  y: number;
 }
-
-interface PathData {
-  id: string;
-  path: string;
-  color: string;
-  width: number;
-}
-
-interface ExportSelection {
-  startX: number;
-  startY: number;
-  width: number;
-  height: number;
-}
-
-type CanvasMode = "draw" | "select" | "erase" | "export";
-type ThemeMode = "light" | "dark" | "system";
 
 const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   style,
@@ -57,8 +50,16 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const isDarkMode =
     forceDarkMode ||
     (themeMode === "system" ? systemTheme === "dark" : themeMode === "dark");
+  const theme = createTheme(isDarkMode);
 
-  const [paths, setPaths] = useState<PathData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [jsons, setJsons] = useState<JsonData[]>([{ id: "1", paths: [] }]);
+  const [currentJsonId, setCurrentJsonId] = useState<string>("1");
+  const currentJson =
+    jsons.find((json) => json.id === currentJsonId) || jsons[0];
+  const paths = currentJson.paths;
+  const [showJsonNav, setShowJsonNav] = useState(false);
+
   const [currentPath, setCurrentPath] = useState<string>("");
   const [mode, setMode] = useState<CanvasMode>("draw");
   const [selectionBox, setSelectionBox] = useState({
@@ -72,21 +73,12 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     useState<ExportSelection | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [latexResult, setLatexResult] = useState<string>("");
+  const [showLatexModal, setShowLatexModal] = useState(false);
 
   const canvasRef = useRef<View>(null);
   const exportAreaRef = useRef<View>(null);
   const buttonScaleAnim = useRef(new Animated.Value(1)).current;
-
-  const theme = {
-    background: isDarkMode ? "#121212" : "#F0F0F0",
-    surface: isDarkMode ? "#1E1E1E" : "#FFFFFF",
-    text: isDarkMode ? "#E1E1E1" : "#333333",
-    border: isDarkMode ? "#333333" : "#E0E0E0",
-    primary: "#4D97FF",
-    success: "#4CAF50",
-    danger: "#FF6B6B",
-    selection: "rgba(77, 151, 255, 0.1)",
-  };
 
   const animateButton = (scale: number) => {
     Animated.spring(buttonScaleAnim, {
@@ -132,15 +124,17 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     onPanResponderRelease: () => {
       if (mode === "draw" && currentPath) {
-        setPaths((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            path: currentPath,
-            color: isDarkMode ? "#FFFFFF" : strokeColor,
-            width: strokeWidth,
-          },
-        ]);
+        const newPath = {
+          id: Date.now().toString(),
+          path: currentPath,
+          color: isDarkMode ? "#FFFFFF" : strokeColor,
+          width: strokeWidth,
+        };
+        updatePaths([...paths, newPath]);
+        console.log(
+          "Paths JSON:",
+          JSON.stringify([...paths, newPath], null, 2)
+        );
         setCurrentPath("");
       } else if (mode === "select") {
         handleSelection();
@@ -175,18 +169,68 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const handleExport = async (selectedArea = false) => {
     try {
       const ref = selectedArea ? exportAreaRef : canvasRef;
+
+      // Capture the canvas as an image and return a local URI
       const uri = await captureRef(ref, {
         format: "png",
         quality: 1,
       });
-      onExport?.(uri);
+
+      if (!uri) {
+        throw new Error("Failed to capture the canvas. URI is invalid.");
+      }
+      console.log("Captured URI:", uri);
+
+      // Build multipart/form-data with the local file URI directly
+      const formData = new FormData();
+      formData.append("file", {
+        uri, // The local URI from captureRef
+        type: "image/png",
+        name: "drawing.png",
+      } as any);
+
+      // Send the FormData to the backend
+
+      const backendResponse = await fetch(
+        "https://hackwar-be.onrender.com/process-math",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!backendResponse.ok) {
+        throw new Error(`Upload failed. Status: ${backendResponse.status}`);
+      }
+
+      const data = await backendResponse.json();
+      console.log("Upload successful:", data);
+
+      // Handle the DeepSeek response
+      if (data.choices && data.choices[0]?.message?.content) {
+        const teacherGuidance = data.choices[0].message.content;
+
+        // Format the response for display
+        const formattedContent = `
+    Teacher's Guidance:
+    ${teacherGuidance}
+  `;
+
+        setLatexResult(formattedContent.trim());
+        setShowLatexModal(true);
+      } else {
+        setLatexResult("Analysis completed but no guidance was generated.");
+        setShowLatexModal(true);
+      }
+
       setShowExportModal(false);
       setExportSelection(null);
-      console.log(uri);
-      Alert.alert("Success", "Drawing exported successfully!");
-    } catch (error) {
-      Alert.alert("Error", "Failed to export drawing");
-      console.error("Export error:", error);
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "An unknown error occurred during analysis."
+      );
+      console.error("Analysis error:", error);
     }
   };
 
@@ -269,6 +313,52 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       </View>
     </Modal>
   );
+
+  const updatePaths = (newPaths: PathData[]) => {
+    setJsons((prev) => {
+      const updated = prev.map((json) =>
+        json.id === currentJsonId ? { ...json, paths: newPaths } : json
+      );
+      return updated;
+    });
+  };
+
+  // Load saved files on mount
+  useEffect(() => {
+    const loadSavedFiles = async () => {
+      try {
+        const savedFiles = await storage.loadFiles();
+        setJsons(savedFiles);
+        setCurrentJsonId(savedFiles[0]?.id || "1");
+      } catch (error) {
+        console.error("Error loading saved files:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSavedFiles();
+  }, []);
+
+  // Save files whenever they change
+  useEffect(() => {
+    if (!loading) {
+      storage.saveFiles(jsons);
+    }
+  }, [jsons, loading]);
+
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          { backgroundColor: theme.background },
+        ]}
+      >
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -364,7 +454,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                   text: "Clear",
                   style: "destructive",
                   onPress: () => {
-                    setPaths([]);
+                    updatePaths([]);
                     setCurrentPath("");
                     setSelectedPaths(new Set());
                   },
@@ -378,7 +468,30 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         </TouchableOpacity>
       </View>
 
+      <FloatingButton onPress={() => setShowJsonNav(true)} theme={theme} />
+
+      <JsonNavbar
+        visible={showJsonNav}
+        jsons={jsons}
+        currentJsonId={currentJsonId}
+        onSelectJson={(id) => {
+          if (id === (jsons.length + 1).toString()) {
+            setJsons((prev) => [...prev, { id, paths: [] }]);
+          }
+          setCurrentJsonId(id);
+          setShowJsonNav(false);
+        }}
+        onClose={() => setShowJsonNav(false)}
+        theme={theme}
+      />
       {renderExportModal()}
+      <LatexModal
+        visible={showLatexModal}
+        onClose={() => setShowLatexModal(false)}
+        content={latexResult}
+        theme={theme}
+        title="Analysis Result"
+      />
     </SafeAreaView>
   );
 };
@@ -469,6 +582,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "600",
     fontSize: 16,
+  },
+  centered: {
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 
