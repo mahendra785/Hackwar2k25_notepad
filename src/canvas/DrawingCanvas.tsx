@@ -19,11 +19,12 @@ import {
 import Svg, { Path, Rect, G } from "react-native-svg"
 import { captureRef } from "react-native-view-shot"
 import { Feather } from "@expo/vector-icons"
-import type { DrawingCanvasProps, PathData, CanvasMode, ThemeMode, JsonData } from "../types/drawing"
+import type { DrawingCanvasProps, PathData, CanvasMode, ThemeMode, JsonData, ExportSelection } from "../types/drawing"
 import { createTheme } from "../utils/theme"
 import { storage } from "../utils/storage"
 import { FloatingButton } from "../components/floating-button"
 import { JsonNavbar } from "../components/json-navbar"
+import LatexModal from "../components/LatexModal";
 
 interface Point {
   x: number
@@ -57,10 +58,12 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     width: 0,
     height: 0,
     visible: false,
-  })
-  const [exportSelection, setExportSelection] = useState<ExportSelection | null>(null)
-  const [showExportModal, setShowExportModal] = useState(false)
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  });
+  const [exportSelection, setExportSelection] = useState<ExportSelection | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [latexResult, setLatexResult] = useState<string>("");
+  const [showLatexModal, setShowLatexModal] = useState(false);
 
   const canvasRef = useRef<View>(null)
   const exportAreaRef = useRef<View>(null)
@@ -151,18 +154,72 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const handleExport = async (selectedArea = false) => {
     try {
-      const ref = selectedArea ? exportAreaRef : canvasRef
+      const ref = selectedArea ? exportAreaRef : canvasRef;
+
+      // Capture the canvas as an image and return a local URI
       const uri = await captureRef(ref, {
         format: "png",
         quality: 1,
-      })
-      onExport?.(uri)
-      setShowExportModal(false)
-      setExportSelection(null)
-      Alert.alert("Success", "Drawing exported successfully!")
-    } catch (error) {
-      Alert.alert("Error", "Failed to export drawing")
-      console.error("Export error:", error)
+      });
+
+      if (!uri) {
+        throw new Error("Failed to capture the canvas. URI is invalid.");
+      }
+      console.log("Captured URI:", uri);
+
+      // Build multipart/form-data with the local file URI directly
+      const formData = new FormData();
+      formData.append("file", {
+        uri, // The local URI from captureRef
+        type: "image/png",
+        name: "drawing.png",
+      } as any);
+
+      // Send the FormData to the backend
+      const backendResponse = await fetch(
+        // Replace with your actual backend endpoint or import from .env
+        "https://hackwar-be.onrender.com/process-image",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!backendResponse.ok) {
+        throw new Error(`Upload failed. Status: ${backendResponse.status}`);
+      }
+
+      const data = await backendResponse.json();
+      console.log("Upload successful:", data);
+
+      // Handle the new response format
+      if (data.result) {
+        const { is_struggling, math_exp, summary } = data.result;
+        const resultContent = `
+          ${summary}
+
+          ${
+            is_struggling
+              ? "It seems you might be struggling with this concept."
+              : ""
+          }
+          ${math_exp ? `Mathematical Expression: ${math_exp}` : ""}
+        `;
+        setLatexResult(resultContent.trim());
+        setShowLatexModal(true);
+      } else {
+        setLatexResult("Drawing exported and uploaded successfully!");
+        setShowLatexModal(true);
+      }
+
+      setShowExportModal(false);
+      setExportSelection(null);
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "An unknown error occurred during export."
+      );
+      console.error("Export error:", error);
     }
   }
 
@@ -359,6 +416,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         theme={theme}
       />
       {renderExportModal()}
+      <LatexModal
+        visible={showLatexModal}
+        onClose={() => setShowLatexModal(false)}
+        content={latexResult}
+        theme={theme}
+        title="Analysis Result"
+      />
     </SafeAreaView>
   )
 }
