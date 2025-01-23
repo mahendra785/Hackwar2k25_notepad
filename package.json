@@ -15,6 +15,7 @@
     "react-native": "0.76.6",
     "react-native-file-viewer": "^2.1.5",
     "react-native-fs": "^2.20.0",
+    "react-native-katex": "^1.0.2",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-permissions": "^5.2.4",
     "react-native-reanimated": "^3.16.7",

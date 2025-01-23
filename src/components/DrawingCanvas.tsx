@@ -12,13 +12,18 @@ import {
   Animated,
   useColorScheme,
   Modal,
-  Pressable,
   SafeAreaView,
   StatusBar,
 } from "react-native";
 import Svg, { Path, Rect, G } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
 import { Feather } from "@expo/vector-icons";
+// If you want to load from .env, import below or just replace with your own URL:
+// import { BACKEND_URL } from "@env";
+import LatexModal from "./LatexModal";
+
+type CanvasMode = "draw" | "select" | "export";
+type ThemeMode = "light" | "dark" | "system";
 
 interface DrawingCanvasProps {
   style?: ViewStyle;
@@ -41,9 +46,6 @@ interface ExportSelection {
   width: number;
   height: number;
 }
-
-type CanvasMode = "draw" | "select" | "erase" | "export";
-type ThemeMode = "light" | "dark" | "system";
 
 const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   style,
@@ -72,6 +74,8 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     useState<ExportSelection | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [latexResult, setLatexResult] = useState<string>("");
+  const [showLatexModal, setShowLatexModal] = useState(false);
 
   const canvasRef = useRef<View>(null);
   const exportAreaRef = useRef<View>(null);
@@ -102,7 +106,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     onPanResponderGrant: (event: GestureResponderEvent) => {
       const { locationX, locationY } = event.nativeEvent;
-
       if (mode === "draw") {
         setCurrentPath(`M ${locationX} ${locationY}`);
       } else if (mode === "select" || mode === "export") {
@@ -118,7 +121,6 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     onPanResponderMove: (event: GestureResponderEvent) => {
       const { locationX, locationY } = event.nativeEvent;
-
       if (mode === "draw") {
         setCurrentPath((prev) => `${prev} L ${locationX} ${locationY}`);
       } else if (mode === "select" || mode === "export") {
@@ -152,13 +154,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   });
 
   const handleSelection = useCallback(() => {
+    // Currently this just selects all paths; enhance to check bounding boxes, etc.
     const selected = new Set<string>();
     paths.forEach((path) => {
-      // Simple selection logic - enhance as needed
       selected.add(path.id);
     });
     setSelectedPaths(selected);
-  }, [paths, selectionBox]);
+  }, [paths]);
 
   const handleExportSelection = () => {
     if (selectionBox.width && selectionBox.height) {
@@ -175,17 +177,70 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const handleExport = async (selectedArea = false) => {
     try {
       const ref = selectedArea ? exportAreaRef : canvasRef;
+
+      // Capture the canvas as an image and return a local URI
       const uri = await captureRef(ref, {
         format: "png",
         quality: 1,
       });
-      onExport?.(uri);
+
+      if (!uri) {
+        throw new Error("Failed to capture the canvas. URI is invalid.");
+      }
+      console.log("Captured URI:", uri);
+
+      // Build multipart/form-data with the local file URI directly
+      const formData = new FormData();
+      formData.append("file", {
+        uri, // The local URI from captureRef
+        type: "image/png",
+        name: "drawing.png",
+      } as any);
+
+      // Send the FormData to the backend
+      const backendResponse = await fetch(
+        // Replace with your actual backend endpoint or import from .env
+        "https://hackwar-be.onrender.com/process-image",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!backendResponse.ok) {
+        throw new Error(`Upload failed. Status: ${backendResponse.status}`);
+      }
+
+      const data = await backendResponse.json();
+      console.log("Upload successful:", data);
+
+      // Handle the new response format
+      if (data.result) {
+        const { is_struggling, math_exp, summary } = data.result;
+        const resultContent = `
+          ${summary}
+
+          ${
+            is_struggling
+              ? "It seems you might be struggling with this concept."
+              : ""
+          }
+          ${math_exp ? `Mathematical Expression: ${math_exp}` : ""}
+        `;
+        setLatexResult(resultContent.trim());
+        setShowLatexModal(true);
+      } else {
+        setLatexResult("Drawing exported and uploaded successfully!");
+        setShowLatexModal(true);
+      }
+
       setShowExportModal(false);
       setExportSelection(null);
-      console.log(uri);
-      Alert.alert("Success", "Drawing exported successfully!");
-    } catch (error) {
-      Alert.alert("Error", "Failed to export drawing");
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "An unknown error occurred during export."
+      );
       console.error("Export error:", error);
     }
   };
@@ -379,6 +434,13 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       </View>
 
       {renderExportModal()}
+      <LatexModal
+        visible={showLatexModal}
+        onClose={() => setShowLatexModal(false)}
+        content={latexResult}
+        theme={theme}
+        title="Analysis Result"
+      />
     </SafeAreaView>
   );
 };
