@@ -1,16 +1,24 @@
-import React from "react"
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, ActivityIndicator } from "react-native"
-import { Feather } from "@expo/vector-icons"
-import type { JsonData } from "../types/drawing"
+import React from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Animated,
+  ActivityIndicator,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import type { JsonData } from "../types/drawing";
 
 interface JsonNavbarProps {
-  visible: boolean
-  jsons: JsonData[]
-  currentJsonId: string
-  onSelectJson: (id: string) => void
-  onClose: () => void
-  theme: ReturnType<typeof import("../utils/theme").createTheme>
-  loading?: boolean
+  visible: boolean;
+  jsons: JsonData[];
+  currentJsonId: string;
+  onSelectJson: (id: string) => void;
+  onClose: () => void;
+  theme: ReturnType<typeof import("../utils/theme").createTheme>;
+  loading?: boolean;
 }
 
 export const JsonNavbar: React.FC<JsonNavbarProps> = ({
@@ -22,15 +30,15 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
   theme,
   loading = false,
 }) => {
-  const translateX = React.useRef(new Animated.Value(300)).current
+  const translateX = React.useRef(new Animated.Value(300)).current;
 
   React.useEffect(() => {
     Animated.spring(translateX, {
       toValue: visible ? 0 : 300,
       useNativeDriver: true,
       friction: 8,
-    }).start()
-  }, [visible])
+    }).start();
+  }, [visible]);
 
   return (
     <Animated.View
@@ -48,13 +56,17 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
         <View style={styles.headerButtons}>
           <TouchableOpacity
             onPress={() => {
-              const newId = (jsons.length + 1).toString()
-              onSelectJson(newId)
+              const newId = (jsons.length + 1).toString();
+              onSelectJson(newId);
             }}
             style={styles.headerButton}
             disabled={loading}
           >
-            <Feather name="plus" size={20} color={loading ? theme.border : theme.text} />
+            <Feather
+              name="plus"
+              size={20}
+              color={loading ? theme.border : theme.text}
+            />
           </TouchableOpacity>
           <TouchableOpacity onPress={onClose} style={styles.headerButton}>
             <Feather name="x" size={20} color={theme.text} />
@@ -73,12 +85,17 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
               style={[
                 styles.item,
                 {
-                  backgroundColor: json.id === currentJsonId ? theme.primary : "transparent",
+                  backgroundColor:
+                    json.id === currentJsonId ? theme.primary : "transparent",
                 },
               ]}
               onPress={() => onSelectJson(json.id)}
             >
-              <Feather name="file-text" size={20} color={json.id === currentJsonId ? "white" : theme.text} />
+              <Feather
+                name="file-text"
+                size={20}
+                color={json.id === currentJsonId ? "white" : theme.text}
+              />
               <Text
                 style={[
                   styles.itemText,
@@ -87,25 +104,15 @@ export const JsonNavbar: React.FC<JsonNavbarProps> = ({
                   },
                 ]}
               >
-                Page {json.id}
-              </Text>
-              <Text
-                style={[
-                  styles.pathCount,
-                  {
-                    color: json.id === currentJsonId ? "rgba(255,255,255,0.7)" : theme.text,
-                  },
-                ]}
-              >
-                {json.paths.length} paths
+                Note {json.id}
               </Text>
             </TouchableOpacity>
           ))
         )}
       </ScrollView>
     </Animated.View>
-  )
-}
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -165,5 +172,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minHeight: 200,
   },
-})
-
+});
