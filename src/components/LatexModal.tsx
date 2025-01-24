@@ -6,14 +6,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Linking,
+  TextStyle,
 } from "react-native";
 import Katex from "react-native-katex";
+import { WebView } from "react-native-webview";
 
 interface LatexModalProps {
   visible: boolean;
   onClose: () => void;
-  content: string | React.ReactNode;
+  content: string;
   theme: {
     background: string;
     surface: string;
@@ -21,6 +22,7 @@ interface LatexModalProps {
     primary: string;
   };
   title: string;
+  webViewSource?: string; // Optional prop for WebView
 }
 
 const LatexModal: React.FC<LatexModalProps> = ({
@@ -29,6 +31,7 @@ const LatexModal: React.FC<LatexModalProps> = ({
   content,
   theme,
   title,
+  webViewSource,
 }) => {
   const formatContent = (content: string | React.ReactNode) => {
     // If content is already a React element, return it directly
@@ -222,6 +225,18 @@ const LatexModal: React.FC<LatexModalProps> = ({
           <ScrollView style={styles.contentContainer}>
             {formatContent(content)}
           </ScrollView>
+
+          {webViewSource && (
+            <View style={styles.webViewContainer}>
+              <WebView
+                style={styles.webView}
+                source={{ uri: webViewSource }}
+                allowsFullscreenVideo
+                mediaPlaybackRequiresUserAction={false}
+              />
+            </View>
+          )}
+
           <TouchableOpacity
             style={[styles.closeButton, { backgroundColor: theme.primary }]}
             onPress={onClose}
@@ -252,6 +267,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3,
   },
+  webViewContainer: {
+    height: 200, // Fixed height for the WebView section
+    marginVertical: 10,
+    borderRadius: 8,
+    overflow: "hidden", // Ensure the WebView content doesn't overflow
+  },
+  webView: {
+    flex: 1,
+  },
+
   modalTitle: {
     fontSize: 20,
     fontWeight: "bold",

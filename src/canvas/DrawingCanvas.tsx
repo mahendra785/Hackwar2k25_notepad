@@ -710,6 +710,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         content={latexResult}
         theme={theme}
         title="Analysis Result"
+        webViewSource="https://www.youtube.com/embed/rYG1D5lUE4I"
       />
     </SafeAreaView>
   );
