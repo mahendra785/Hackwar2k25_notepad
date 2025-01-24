@@ -17,7 +17,7 @@ const App = () => {
       ) : (
         <DrawingCanvas
           style={styles.canvas}
-          strokeColor="#000000"
+          strokeColor="#026440"
           strokeWidth={3}
         />
       )}
@@ -28,7 +28,7 @@ const App = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   header: {
     padding: 10,
@@ -38,16 +38,16 @@ const styles = StyleSheet.create({
   },
   drawingsList: {
     height: 50,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
   },
   drawingItem: {
     padding: 10,
     marginHorizontal: 5,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: "#e0e0e0",
     borderRadius: 5,
   },
   selectedDrawing: {
-    backgroundColor: '#b0b0b0',
+    backgroundColor: "#b0b0b0",
   },
 });
 

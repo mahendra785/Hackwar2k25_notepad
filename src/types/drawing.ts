@@ -1,4 +1,6 @@
-import type { ViewStyle } from "react-native"
+import { ViewStyle } from 'react-native';
+
+export type ThemeMode = "light" | "dark" | "system"
 
 export interface DrawingCanvasProps {
   style?: ViewStyle
@@ -15,32 +17,15 @@ export interface PathData {
   width: number
 }
 
+export interface JsonData {
+  id: string
+  paths: PathData[]
+}
+
 export interface ExportSelection {
   startX: number
   startY: number
   width: number
   height: number
 }
-
-export interface Point {
-  x: number
-  y: number
-}
-
-export type CanvasMode = "draw" | "select" | "erase" | "export"
-export type ThemeMode = "light" | "dark" | "system"
-
-export interface SelectionBox {
-  startX: number
-  startY: number
-  width: number
-  height: number
-  visible: boolean
-}
-
-export interface JsonData {
-  id: string
-  paths: PathData[]
-}
-
 
