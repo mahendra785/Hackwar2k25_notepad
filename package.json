@@ -25,6 +25,7 @@
     "react-native-permissions": "^5.2.4",
     "react-native-svg": "15.8.0",
     "react-native-view-shot": "^4.0.3",
+    "react-native-webview": "^13.13.1",
     "undefined": "@/components/ui/button"
   },
   "devDependencies": {

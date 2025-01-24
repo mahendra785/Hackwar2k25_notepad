@@ -1,12 +1,24 @@
-export const createTheme = (isDarkMode: boolean) => ({
-  background: isDarkMode ? "#121212" : "#F0F0F0",
-  surface: isDarkMode ? "#1E1E1E" : "#FFFFFF",
-  text: isDarkMode ? "#E1E1E1" : "#333333",
-  border: isDarkMode ? "#333333" : "#E0E0E0",
-  primary: "#4D97FF",
-  success: "#4CAF50",
-  danger: "#FF6B6B",
-  selection: "rgba(77, 151, 255, 0.1)",
-})
+
+interface Theme {
+  background: string
+  surface: string
+  text: string
+  primary: string
+  secondary: string
+  border: string
+  danger: string
+}
+
+export const createTheme = (isDarkMode: boolean): Theme => {
+  return {
+    background: isDarkMode ? "#121212" : "#FFFFFF",
+    surface: isDarkMode ? "#1E1E1E" : "#F5F5F5",
+    text: isDarkMode ? "#FFFFFF" : "#000000",
+    primary: isDarkMode ? "#BB86FC" : "#6200EE",
+    secondary: isDarkMode ? "#03DAC6" : "#03DAC5",
+    border: isDarkMode ? "#333333" : "#E0E0E0",
+    danger: "#CF6679",
+  }
+}
 
 
